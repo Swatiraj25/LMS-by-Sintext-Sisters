@@ -1,111 +1,188 @@
-// Library.java
-// Saara core logic yahin hai: books list, issued list, aur sare operations.
-
-import java.util.ArrayList;
+import java.sql.*;
+import java.util.Scanner;
 
 public class Library {
-    private ArrayList<Book> books;
-    private ArrayList<IssueRecord> issuedBooks;
 
-    public Library() {
-        books = new ArrayList<>();
-        issuedBooks = new ArrayList<>();
-    }
+    public boolean addBook() {
+        try {
+            Scanner sc = new Scanner(System.in);
 
-    // 1) Add book - agar same ID already ho to reject karega.
-    public boolean addBook(Book b) {
-        if (searchBook(b.id) != null) {
-            return false; // duplicate id
-        }
-        books.add(b);
-        return true;
-    }
+            System.out.print("Enter Book Name: ");
+            String name = sc.nextLine();
 
-    // 2) Display all books
-    public void displayBooks() {
-        if (books.isEmpty()) {
-            System.out.println("No books available in library.");
-            return;
-        }
-        System.out.println("----- All Books -----");
-        for (Book b : books) {
-            System.out.println(b);
-        }
-    }
+            System.out.print("Enter Author: ");
+            String author = sc.nextLine();
 
-    // 3) Search book by ID
-    public Book searchBook(int id) {
-        for (Book b : books) {
-            if (b.id == id) return b;
-        }
-        return null;
-    }
+            System.out.print("Enter Quantity: ");
+            int qty = sc.nextInt();
+            sc.nextLine();
 
-    // 4) Delete book by ID
-    public boolean deleteBook(int id) {
-        Book b = searchBook(id);
-        if (b != null) {
-            // ensure that if book is issued, we may still allow deletion.
-            // (Optionally check issuedBooks to prevent deletion if issued)
-            books.remove(b);
+            Connection conn = Database.connect();
+
+            String sql = "INSERT INTO books(name, author, quantity) VALUES(?, ?, ?)";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+
+            stmt.setString(1, name);
+            stmt.setString(2, author);
+            stmt.setInt(3, qty);
+
+            stmt.executeUpdate();
+            System.out.println("Book Added Successfully.");
             return true;
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            return false;
         }
-        return false;
     }
 
-    // 5) Issue book to a student
-    public String issueBook(int id, String student) {
-        Book b = searchBook(id);
-        if (b == null) return "Book not found!";
-        if (b.quantity <= 0) return "Book out of stock!";
-        // decrease quantity and add issue record
-        b.quantity--;
-        issuedBooks.add(new IssueRecord(id, student));
-        return "Book issued successfully to " + student + ".";
-    }
+    public void displayBooks() {
+        try {
+            Connection conn = Database.connect();
+            String sql = "SELECT * FROM books";
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql);
 
-    // 6) Return book (by id and student name)
-    public String returnBook(int id, String student) {
-        IssueRecord found = null;
-        for (IssueRecord ir : issuedBooks) {
-            if (ir.bookId == id && ir.studentName.equalsIgnoreCase(student.trim())) {
-                found = ir;
-                break;
+            System.out.println("----- All Books -----");
+            while (rs.next()) {
+                System.out.println(
+                        rs.getInt("id") + " | " +
+                        rs.getString("name") + " | " +
+                        rs.getString("author") + " | Qty: " +
+                        rs.getInt("quantity")
+                );
             }
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
         }
-        if (found == null) return "No matching issued record found!";
-        issuedBooks.remove(found);
-        Book b = searchBook(id);
-        if (b != null) {
-            b.quantity++;
-        }
-        return "Book returned successfully by " + student + ".";
     }
 
-    // 7) Show all issued books
+    public boolean deleteBook(int id) {
+        try {
+            Connection conn = Database.connect();
+            String sql = "DELETE FROM books WHERE id=?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setInt(1, id);
+
+            int rows = stmt.executeUpdate();
+            return rows > 0;
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
+    }
+
+    public String issueBook(int id, String student) {
+        try {
+            Connection conn = Database.connect();
+
+            String check = "SELECT quantity FROM books WHERE id=?";
+            PreparedStatement chk = conn.prepareStatement(check);
+            chk.setInt(1, id);
+            ResultSet rs = chk.executeQuery();
+
+            if (!rs.next()) return "Book not found!";
+            int qty = rs.getInt("quantity");
+            if (qty <= 0) return "Book out of stock!";
+
+            conn.createStatement().execute(
+                    "INSERT INTO issue_records(book_id, student_name, issue_date) VALUES("
+                            + id + ", '" + student + "', date('now'))"
+            );
+
+            conn.createStatement().execute(
+                    "UPDATE books SET quantity = quantity - 1 WHERE id=" + id
+            );
+
+            return "Book issued successfully to " + student;
+
+        } catch (Exception e) {
+            return e.getMessage();
+        }
+    }
+
+    public String returnBook(int recordId) {
+        try {
+            Connection conn = Database.connect();
+
+            String sql = "SELECT book_id FROM issue_records WHERE id=?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setInt(1, recordId);
+            ResultSet rs = stmt.executeQuery();
+
+            if (!rs.next()) return "Issue record not found!";
+            int bookId = rs.getInt("book_id");
+
+            conn.createStatement().execute(
+                    "UPDATE issue_records SET return_date=date('now') WHERE id=" + recordId
+            );
+
+            conn.createStatement().execute(
+                    "UPDATE books SET quantity = quantity + 1 WHERE id=" + bookId
+            );
+
+            return "Book returned successfully.";
+
+        } catch (Exception e) {
+            return e.getMessage();
+        }
+    }
+
     public void showIssuedBooks() {
-        if (issuedBooks.isEmpty()) {
-            System.out.println("No books are currently issued.");
-            return;
-        }
-        System.out.println("----- Issued Books -----");
-        for (IssueRecord ir : issuedBooks) {
-            System.out.println(ir);
+        try {
+            Connection conn = Database.connect();
+            String sql = "SELECT * FROM issue_records";
+            ResultSet rs = conn.createStatement().executeQuery(sql);
+
+            System.out.println("----- Issued Books -----");
+            while (rs.next()) {
+                System.out.println(
+                        rs.getInt("id") + " | Book ID: " +
+                        rs.getInt("book_id") + " | Student: " +
+                        rs.getString("student_name") + " | Issue: " +
+                        rs.getString("issue_date") + " | Return: " +
+                        rs.getString("return_date")
+                );
+            }
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
         }
     }
 
-    // 8) Total books count (distinct book entries)
     public int totalBooksCount() {
-        return books.size();
+        try {
+            Connection conn = Database.connect();
+            String sql = "SELECT COUNT(*) AS total FROM books";
+            ResultSet rs = conn.createStatement().executeQuery(sql);
+            return rs.getInt("total");
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            return 0;
+        }
     }
 
-    // 9) Update book details
     public boolean updateBook(int id, String newName, String newAuthor, int newQty) {
-        Book b = searchBook(id);
-        if (b == null) return false;
-        b.name = newName;
-        b.author = newAuthor;
-        b.quantity = newQty;
-        return true;
+        try {
+            Connection conn = Database.connect();
+
+            String sql = "UPDATE books SET name=?, author=?, quantity=? WHERE id=?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+
+            stmt.setString(1, newName);
+            stmt.setString(2, newAuthor);
+            stmt.setInt(3, newQty);
+            stmt.setInt(4, id);
+
+            int rows = stmt.executeUpdate();
+            return rows > 0;
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
     }
 }
