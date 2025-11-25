@@ -116,8 +116,6 @@ java -cp ".;lib/sqlite-jdbc.jar" Main
 
 # 📸 Screenshots (Add Yours Here)
 
-> You can take screenshots of the console output and place them in a folder `/screenshots/`.
-
 Example:
 
 
@@ -129,11 +127,12 @@ screenshots/
 │── return.png
 
 
-Then add here:
+
 
 ```md
 ![Menu](screenshots/menu.png)
 ![Add Book](screenshots/add_book.png)
+
 
 💡 Future Enhancements
 
